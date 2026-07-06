@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Temporizador Elíptica + Claude Code</title>
+  <style>
+    :root {
+      --bg: #0f1220;
+      --card: #1a1f36;
+      --accent: #7c5cff;
+      --accent2: #22d3ee;
+      --text: #e8eaf2;
+      --muted: #9aa0b4;
+      --good: #34d399;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(1200px 800px at 50% -10%, #23284a 0%, var(--bg) 60%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      width: 100%;
+      max-width: 460px;
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.45);
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+    .time {
+      font-variant-numeric: tabular-nums;
+      font-size: 64px;
+      font-weight: 800;
+      text-align: center;
+      letter-spacing: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin: 8px 0 4px;
+    }
+    .status {
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 24px;
+      min-height: 20px;
+    }
+    .status.running { color: var(--good); }
+    .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .buttons .wide { grid-column: 1 / -1; }
+    button {
+      border: none;
+      border-radius: 14px;
+      padding: 16px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      color: white;
+      transition: transform .05s ease, opacity .2s;
+    }
+    button:active { transform: scale(0.97); }
+    .btn-start { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+    .btn-pause { background: #f59e0b; }
+    .btn-lap   { background: #334155; }
+    .btn-reset { background: #ef4444; }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 24px 0 8px;
+    }
+    .stat {
+      background: rgba(255,255,255,0.04);
+      border-radius: 14px;
+      padding: 14px;
+      text-align: center;
+    }
+    .stat .v { font-size: 22px; font-weight: 800; }
+    .stat .l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .laps { margin-top: 18px; max-height: 180px; overflow-y: auto; }
+    .lap {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 4px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+    }
+    .lap .n { color: var(--muted); }
+    .laps-title { font-size: 13px; color: var(--muted); margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🚴‍♂️ Elíptica + 🤖 Claude Code</h1>
+    <div class="sub">Cronómetro de tu sesión de ejercicio mientras programas</div>
+
+    <div class="time" id="time">00:00:00</div>
+    <div class="status" id="status">Listo para empezar</div>
+
+    <div class="buttons">
+      <button class="btn-start" id="startBtn" onclick="toggle()">▶ Iniciar</button>
+      <button class="btn-lap" id="lapBtn" onclick="lap()" disabled>🏁 Vuelta</button>
+      <button class="btn-reset wide" id="resetBtn" onclick="reset()" disabled>↺ Reiniciar</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="v" id="lapCount">0</div>
+        <div class="l">Vueltas / bloques</div>
+      </div>
+      <div class="stat">
+        <div class="v" id="avgLap">--:--</div>
+        <div class="l">Promedio por bloque</div>
+      </div>
+    </div>
+
+    <div id="lapsWrap" style="display:none;">
+      <div class="laps-title">Registro de bloques</div>
+      <div class="laps" id="laps"></div>
+    </div>
+  </div>
+
+  <script>
+    let running = false;
+    let elapsed = 0;          // ms acumulados
+    let startTs = 0;          // timestamp de inicio del tramo actual
+    let tick = null;
+    let laps = [];
+    let lastLapElapsed = 0;
+
+    const fmt = (ms) => {
+      const t = Math.floor(ms / 1000);
+      const h = String(Math.floor(t / 3600)).padStart(2, '0');
+      const m = String(Math.floor((t % 3600) / 60)).padStart(2, '0');
+      const s = String(t % 60).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    };
+    const fmtShort = (ms) => {
+      const t = Math.floor(ms / 1000);
+      const m = String(Math.floor(t / 60)).padStart(2, '0');
+      const s = String(t % 60).padStart(2, '0');
+      return `${m}:${s}`;
+    };
+
+    const current = () => elapsed + (running ? Date.now() - startTs : 0);
+
+    function render() {
+      document.getElementById('time').textContent = fmt(current());
+    }
+
+    function toggle() {
+      if (!running) {
+        running = true;
+        startTs = Date.now();
+        tick = setInterval(render, 200);
+        document.getElementById('startBtn').textContent = '⏸ Pausar';
+        document.getElementById('startBtn').className = 'btn-pause';
+        document.getElementById('status').textContent = '💪 En movimiento...';
+        document.getElementById('status').className = 'status running';
+        document.getElementById('lapBtn').disabled = false;
+        document.getElementById('resetBtn').disabled = false;
+      } else {
+        running = false;
+        elapsed += Date.now() - startTs;
+        clearInterval(tick);
+        document.getElementById('startBtn').textContent = '▶ Continuar';
+        document.getElementById('startBtn').className = 'btn-start';
+        document.getElementById('status').textContent = '⏸ En pausa';
+        document.getElementById('status').className = 'status';
+        render();
+      }
+    }
+
+    function lap() {
+      const now = current();
+      const lapTime = now - lastLapElapsed;
+      lastLapElapsed = now;
+      laps.push({ total: now, split: lapTime });
+      renderLaps();
+    }
+
+    function renderLaps() {
+      document.getElementById('lapCount').textContent = laps.length;
+      if (laps.length > 0) {
+        const avg = laps.reduce((a, l) => a + l.split, 0) / laps.length;
+        document.getElementById('avgLap').textContent = fmtShort(avg);
+        document.getElementById('lapsWrap').style.display = 'block';
+      }
+      const wrap = document.getElementById('laps');
+      wrap.innerHTML = laps.map((l, i) =>
+        `<div class="lap"><span class="n">Bloque ${i + 1} &nbsp;·&nbsp; +${fmtShort(l.split)}</span><span>${fmt(l.total)}</span></div>`
+      ).reverse().join('');
+    }
+
+    function reset() {
+      if (running) toggle();
+      elapsed = 0; startTs = 0; laps = []; lastLapElapsed = 0;
+      clearInterval(tick);
+      render();
+      document.getElementById('status').textContent = 'Listo para empezar';
+      document.getElementById('status').className = 'status';
+      document.getElementById('startBtn').textContent = '▶ Iniciar';
+      document.getElementById('startBtn').className = 'btn-start';
+      document.getElementById('lapBtn').disabled = true;
+      document.getElementById('resetBtn').disabled = true;
+      document.getElementById('lapCount').textContent = '0';
+      document.getElementById('avgLap').textContent = '--:--';
+      document.getElementById('lapsWrap').style.display = 'none';
+      document.getElementById('laps').innerHTML = '';
+    }
+
+    render();
+  </script>
+</body>
+</html>
