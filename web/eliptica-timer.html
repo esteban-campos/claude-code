@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Temporizador Elíptica + Claude Code</title>
+  <title>Elíptica + Claude Code — Entrenador de código</title>
   <style>
     :root {
       --bg: #0f1220;
@@ -13,6 +13,8 @@
       --text: #e8eaf2;
       --muted: #9aa0b4;
       --good: #34d399;
+      --warn: #f59e0b;
+      --sprint: #ef4444;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -21,214 +23,306 @@
       color: var(--text);
       min-height: 100vh;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
       padding: 20px;
     }
     .card {
       width: 100%;
-      max-width: 460px;
+      max-width: 480px;
       background: var(--card);
       border: 1px solid rgba(255,255,255,0.07);
       border-radius: 24px;
-      padding: 28px;
+      padding: 26px;
       box-shadow: 0 30px 80px rgba(0,0,0,0.45);
     }
-    h1 {
-      font-size: 20px;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 4px;
+    h1 { font-size: 19px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .sub { color: var(--muted); font-size: 13px; margin: 4px 0 20px; }
+
+    /* Fase actual */
+    .phase {
+      border-radius: 16px; padding: 12px; text-align: center; margin-bottom: 14px;
+      font-weight: 800; font-size: 15px; letter-spacing: .5px;
+      background: rgba(124,92,255,0.15); border: 1px solid rgba(124,92,255,0.4);
+      transition: all .3s;
     }
-    .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+    .phase.sprint { background: rgba(239,68,68,0.18); border-color: rgba(239,68,68,0.5); color: #fca5a5; }
+    .phase.code   { background: rgba(52,211,153,0.15); border-color: rgba(52,211,153,0.4); color: #6ee7b7; }
+    .phase .pt { font-size: 12px; opacity: .8; font-weight: 600; margin-top: 2px; letter-spacing: 0; }
+
     .time {
-      font-variant-numeric: tabular-nums;
-      font-size: 64px;
-      font-weight: 800;
-      text-align: center;
-      letter-spacing: 2px;
+      font-variant-numeric: tabular-nums; font-size: 60px; font-weight: 800;
+      text-align: center; letter-spacing: 1px;
       background: linear-gradient(90deg, var(--accent), var(--accent2));
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-      margin: 8px 0 4px;
+      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+      margin: 6px 0 2px;
     }
-    .status {
-      text-align: center;
-      color: var(--muted);
-      font-size: 14px;
-      margin-bottom: 24px;
-      min-height: 20px;
-    }
+    .status { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 20px; min-height: 18px; }
     .status.running { color: var(--good); }
-    .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .buttons .wide { grid-column: 1 / -1; }
     button {
-      border: none;
-      border-radius: 14px;
-      padding: 16px;
-      font-size: 15px;
-      font-weight: 700;
-      cursor: pointer;
-      color: white;
-      transition: transform .05s ease, opacity .2s;
+      border: none; border-radius: 14px; padding: 15px; font-size: 15px; font-weight: 700;
+      cursor: pointer; color: white; transition: transform .05s ease, opacity .2s;
     }
     button:active { transform: scale(0.97); }
     .btn-start { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
-    .btn-pause { background: #f59e0b; }
-    .btn-lap   { background: #334155; }
+    .btn-pause { background: var(--warn); }
+    .btn-commit { background: #334155; }
     .btn-reset { background: #ef4444; }
     button:disabled { opacity: .4; cursor: not-allowed; }
-    .stats {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin: 24px 0 8px;
-    }
-    .stat {
-      background: rgba(255,255,255,0.04);
-      border-radius: 14px;
-      padding: 14px;
-      text-align: center;
-    }
-    .stat .v { font-size: 22px; font-weight: 800; }
-    .stat .l { font-size: 12px; color: var(--muted); margin-top: 2px; }
-    .laps { margin-top: 18px; max-height: 180px; overflow-y: auto; }
-    .lap {
-      display: flex;
-      justify-content: space-between;
-      padding: 10px 4px;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-      font-size: 14px;
-      font-variant-numeric: tabular-nums;
-    }
-    .lap .n { color: var(--muted); }
-    .laps-title { font-size: 13px; color: var(--muted); margin-top: 20px; }
+
+    .stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin: 20px 0 6px; }
+    .stat { background: rgba(255,255,255,0.04); border-radius: 14px; padding: 12px 8px; text-align: center; }
+    .stat .v { font-size: 20px; font-weight: 800; }
+    .stat .l { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    details { margin-top: 18px; background: rgba(255,255,255,0.03); border-radius: 14px; padding: 4px 14px; }
+    summary { cursor: pointer; padding: 10px 0; font-size: 14px; font-weight: 600; color: var(--muted); }
+    .row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; font-size: 14px; gap: 10px; }
+    .row input { width: 72px; background: #0f1220; border: 1px solid rgba(255,255,255,0.1); color: var(--text);
+      border-radius: 8px; padding: 7px; text-align: center; font-size: 14px; }
+    .row label { color: var(--muted); }
+
+    .streak { display: flex; justify-content: space-between; align-items: center; margin-top: 16px;
+      background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); border-radius: 14px; padding: 12px 14px; }
+    .streak .big { font-size: 22px; font-weight: 800; color: var(--warn); }
+    .streak .l { font-size: 12px; color: var(--muted); }
+
+    /* Toast */
+    #toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(120px);
+      background: #1f2547; border: 1px solid rgba(255,255,255,0.15); color: var(--text);
+      padding: 14px 20px; border-radius: 14px; font-weight: 600; font-size: 14px; box-shadow: 0 20px 50px rgba(0,0,0,.5);
+      transition: transform .35s cubic-bezier(.2,.8,.2,1); z-index: 99; max-width: 90vw; text-align: center; }
+    #toast.show { transform: translateX(-50%) translateY(0); }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>🚴‍♂️ Elíptica + 🤖 Claude Code</h1>
-    <div class="sub">Cronómetro de tu sesión de ejercicio mientras programas</div>
+    <h1>🚴 Elíptica + 🤖 Claude Code</h1>
+    <div class="sub">Entrena mientras programas: intervalos, commits en vivo y racha diaria</div>
+
+    <div class="phase code" id="phase">🧑‍💻 CODEA A RITMO SUAVE<div class="pt" id="phaseTimer">Pulsa iniciar</div></div>
 
     <div class="time" id="time">00:00:00</div>
     <div class="status" id="status">Listo para empezar</div>
 
     <div class="buttons">
       <button class="btn-start" id="startBtn" onclick="toggle()">▶ Iniciar</button>
-      <button class="btn-lap" id="lapBtn" onclick="lap()" disabled>🏁 Vuelta</button>
-      <button class="btn-reset wide" id="resetBtn" onclick="reset()" disabled>↺ Reiniciar</button>
+      <button class="btn-commit" id="commitBtn" onclick="manualCommit()" disabled>＋ Commit</button>
+      <button class="btn-reset wide" id="resetBtn" onclick="reset()" disabled>↺ Terminar sesión</button>
     </div>
 
     <div class="stats">
-      <div class="stat">
-        <div class="v" id="lapCount">0</div>
-        <div class="l">Vueltas / bloques</div>
-      </div>
-      <div class="stat">
-        <div class="v" id="avgLap">--:--</div>
-        <div class="l">Promedio por bloque</div>
-      </div>
+      <div class="stat"><div class="v" id="commits">0</div><div class="l">Commits</div></div>
+      <div class="stat"><div class="v" id="kcal">0</div><div class="l">kcal aprox.</div></div>
+      <div class="stat"><div class="v" id="cpm">0.0</div><div class="l">commits/h</div></div>
     </div>
 
-    <div id="lapsWrap" style="display:none;">
-      <div class="laps-title">Registro de bloques</div>
-      <div class="laps" id="laps"></div>
+    <div class="streak">
+      <div><div class="l">🔥 Racha</div><div class="big" id="streakDays">0 días</div></div>
+      <div style="text-align:right;"><div class="l">Total hoy</div><div class="big" id="todayMin" style="color:var(--good)">0 min</div></div>
     </div>
+
+    <details>
+      <summary>⚙️ Ajustes de intervalos y perfil</summary>
+      <div class="row"><label>🧑‍💻 Bloque código (min)</label><input id="cfgCode" type="number" min="1" value="20"></div>
+      <div class="row"><label>🔥 Bloque sprint (min)</label><input id="cfgSprint" type="number" min="1" value="4"></div>
+      <div class="row"><label>💧 Aviso postura/agua (min)</label><input id="cfgRemind" type="number" min="1" value="12"></div>
+      <div class="row"><label>⚖️ Tu peso (kg)</label><input id="cfgWeight" type="number" min="20" value="70"></div>
+      <div class="row"><label>🔊 Sonido</label><input id="cfgSound" type="checkbox" checked style="width:auto"></div>
+    </details>
   </div>
 
+  <div id="toast"></div>
+
   <script>
-    let running = false;
-    let elapsed = 0;          // ms acumulados
-    let startTs = 0;          // timestamp de inicio del tramo actual
-    let tick = null;
-    let laps = [];
-    let lastLapElapsed = 0;
+    // ---------- Estado ----------
+    let running = false, elapsed = 0, startTs = 0, tick = null;
+    let sessionStartISO = null;
+    let commits = 0, manualCommits = 0, baseCommits = 0;
+    let phase = 'code';                 // 'code' | 'sprint'
+    let phaseElapsed = 0;               // ms dentro de la fase actual
+    let lastRemindAt = 0;               // ms del último aviso
+    let pollTimer = null, liveGit = false;
+
+    const $ = (id) => document.getElementById(id);
+    const cfg = () => ({
+      code:   Math.max(1, +$('cfgCode').value)   * 60000,
+      sprint: Math.max(1, +$('cfgSprint').value) * 60000,
+      remind: Math.max(1, +$('cfgRemind').value) * 60000,
+      weight: Math.max(20, +$('cfgWeight').value),
+      sound:  $('cfgSound').checked,
+    });
 
     const fmt = (ms) => {
-      const t = Math.floor(ms / 1000);
-      const h = String(Math.floor(t / 3600)).padStart(2, '0');
-      const m = String(Math.floor((t % 3600) / 60)).padStart(2, '0');
-      const s = String(t % 60).padStart(2, '0');
-      return `${h}:${m}:${s}`;
+      const t = Math.floor(ms/1000);
+      return [t/3600, (t%3600)/60, t%60].map(n => String(Math.floor(n)).padStart(2,'0')).join(':');
     };
-    const fmtShort = (ms) => {
-      const t = Math.floor(ms / 1000);
-      const m = String(Math.floor(t / 60)).padStart(2, '0');
-      const s = String(t % 60).padStart(2, '0');
-      return `${m}:${s}`;
+    const fmtMS = (ms) => {
+      const t = Math.max(0, Math.floor(ms/1000));
+      return `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`;
     };
+    const current = () => elapsed + (running ? Date.now()-startTs : 0);
 
-    const current = () => elapsed + (running ? Date.now() - startTs : 0);
+    // ---------- Sonido / vibración ----------
+    let audioCtx = null;
+    function beep(freq=880, dur=0.15, times=1) {
+      if (!cfg().sound) return;
+      try {
+        audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+        for (let i=0;i<times;i++){
+          const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+          o.frequency.value=freq; o.type='sine'; o.connect(g); g.connect(audioCtx.destination);
+          const st=audioCtx.currentTime + i*(dur+0.08);
+          g.gain.setValueAtTime(0.001,st); g.gain.exponentialRampToValueAtTime(0.3,st+0.02);
+          g.gain.exponentialRampToValueAtTime(0.001,st+dur);
+          o.start(st); o.stop(st+dur);
+        }
+      } catch(e){}
+    }
+    const vibrate = (p) => { try { navigator.vibrate && navigator.vibrate(p); } catch(e){} };
 
-    function render() {
-      document.getElementById('time').textContent = fmt(current());
+    function toast(msg, ms=3500) {
+      const t=$('toast'); t.textContent=msg; t.classList.add('show');
+      clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'), ms);
     }
 
+    // ---------- Fases (Pomodoro deportivo) ----------
+    function setPhase(next) {
+      phase = next; phaseElapsed = 0;
+      const el = $('phase');
+      if (next === 'sprint') {
+        el.className='phase sprint';
+        el.innerHTML='🔥 SPRINT — ¡sin teclado, dale fuerte!<div class="pt" id="phaseTimer"></div>';
+        beep(660,0.18,3); vibrate([200,100,200]); toast('🔥 ¡Sprint! Suelta el teclado y acelera');
+      } else {
+        el.className='phase code';
+        el.innerHTML='🧑‍💻 CODEA A RITMO SUAVE<div class="pt" id="phaseTimer"></div>';
+        beep(880,0.15,2); vibrate(150); toast('🧑‍💻 A programar a ritmo suave');
+      }
+    }
+
+    // ---------- Loop ----------
+    function loop() {
+      const now = current();
+      $('time').textContent = fmt(now);
+
+      // fase
+      const c = cfg();
+      phaseElapsed += 200;
+      const dur = phase==='sprint' ? c.sprint : c.code;
+      const rem = dur - phaseElapsed;
+      const pt = $('phaseTimer'); if (pt) pt.textContent = `${phase==='sprint'?'Sprint':'Código'} · quedan ${fmtMS(rem)}`;
+      if (rem <= 0) setPhase(phase==='sprint' ? 'code' : 'sprint');
+
+      // recordatorio postura/agua
+      if (now - lastRemindAt >= c.remind) {
+        lastRemindAt = now;
+        const tips = ['💧 Toma un sorbo de agua','🧘 Estira la espalda y hombros','👀 Mira lejos 20s (descansa la vista)','🫁 Respira hondo 3 veces'];
+        const tip = tips[Math.floor(now/c.remind) % tips.length];
+        beep(520,0.12,1); toast(tip);
+      }
+
+      // stats
+      const kcal = Math.round(7 * c.weight * (now/3600000)); // ~7 METs elíptica moderada
+      $('kcal').textContent = kcal;
+      const hrs = now/3600000;
+      $('cpm').textContent = hrs>0 ? (commits/hrs).toFixed(1) : '0.0';
+    }
+
+    // ---------- Commits en vivo (servidor Node opcional) ----------
+    async function pollCommits() {
+      if (!sessionStartISO) return;
+      try {
+        const r = await fetch(`./commits?since=${encodeURIComponent(sessionStartISO)}`, {cache:'no-store'});
+        if (!r.ok) throw 0;
+        const data = await r.json();
+        liveGit = true;
+        $('commitBtn').style.display = 'none';            // en modo live no hace falta el botón manual
+        const prev = commits;
+        commits = (data.count||0) + manualCommits;
+        $('commits').textContent = commits;
+        if (commits > prev) { beep(1046,0.1,2); toast(`✅ Commit #${commits} durante el ejercicio`); }
+      } catch(e) {
+        liveGit = false;
+        $('commitBtn').style.display = '';                // sin servidor: botón manual visible
+      }
+    }
+    function manualCommit() {
+      manualCommits++;
+      commits = manualCommits;           // sin servidor git, el conteo es manual
+      $('commits').textContent = commits;
+      beep(1046,0.1,2); toast(`✅ Commit registrado (#${commits})`);
+    }
+
+    // ---------- Controles ----------
     function toggle() {
       if (!running) {
-        running = true;
-        startTs = Date.now();
-        tick = setInterval(render, 200);
-        document.getElementById('startBtn').textContent = '⏸ Pausar';
-        document.getElementById('startBtn').className = 'btn-pause';
-        document.getElementById('status').textContent = '💪 En movimiento...';
-        document.getElementById('status').className = 'status running';
-        document.getElementById('lapBtn').disabled = false;
-        document.getElementById('resetBtn').disabled = false;
+        running = true; startTs = Date.now();
+        if (!sessionStartISO) { sessionStartISO = new Date(startTs).toISOString(); pollCommits(); }
+        tick = setInterval(loop, 200);
+        pollTimer = pollTimer || setInterval(pollCommits, 5000);
+        $('startBtn').textContent='⏸ Pausar'; $('startBtn').className='btn-pause';
+        $('status').textContent='💪 En movimiento — programa y pedalea'; $('status').className='status running';
+        $('commitBtn').disabled=false; $('resetBtn').disabled=false;
+        beep(880,0.12,1);
       } else {
-        running = false;
-        elapsed += Date.now() - startTs;
-        clearInterval(tick);
-        document.getElementById('startBtn').textContent = '▶ Continuar';
-        document.getElementById('startBtn').className = 'btn-start';
-        document.getElementById('status').textContent = '⏸ En pausa';
-        document.getElementById('status').className = 'status';
-        render();
+        running=false; elapsed += Date.now()-startTs; clearInterval(tick);
+        $('startBtn').textContent='▶ Continuar'; $('startBtn').className='btn-start';
+        $('status').textContent='⏸ En pausa'; $('status').className='status';
+        loop();
       }
-    }
-
-    function lap() {
-      const now = current();
-      const lapTime = now - lastLapElapsed;
-      lastLapElapsed = now;
-      laps.push({ total: now, split: lapTime });
-      renderLaps();
-    }
-
-    function renderLaps() {
-      document.getElementById('lapCount').textContent = laps.length;
-      if (laps.length > 0) {
-        const avg = laps.reduce((a, l) => a + l.split, 0) / laps.length;
-        document.getElementById('avgLap').textContent = fmtShort(avg);
-        document.getElementById('lapsWrap').style.display = 'block';
-      }
-      const wrap = document.getElementById('laps');
-      wrap.innerHTML = laps.map((l, i) =>
-        `<div class="lap"><span class="n">Bloque ${i + 1} &nbsp;·&nbsp; +${fmtShort(l.split)}</span><span>${fmt(l.total)}</span></div>`
-      ).reverse().join('');
     }
 
     function reset() {
+      if (current() > 0) saveSession(current());
       if (running) toggle();
-      elapsed = 0; startTs = 0; laps = []; lastLapElapsed = 0;
-      clearInterval(tick);
-      render();
-      document.getElementById('status').textContent = 'Listo para empezar';
-      document.getElementById('status').className = 'status';
-      document.getElementById('startBtn').textContent = '▶ Iniciar';
-      document.getElementById('startBtn').className = 'btn-start';
-      document.getElementById('lapBtn').disabled = true;
-      document.getElementById('resetBtn').disabled = true;
-      document.getElementById('lapCount').textContent = '0';
-      document.getElementById('avgLap').textContent = '--:--';
-      document.getElementById('lapsWrap').style.display = 'none';
-      document.getElementById('laps').innerHTML = '';
+      elapsed=0; startTs=0; sessionStartISO=null; manualCommits=0; commits=0; phase='code'; phaseElapsed=0; lastRemindAt=0;
+      clearInterval(tick); clearInterval(pollTimer); pollTimer=null;
+      $('time').textContent='00:00:00'; $('commits').textContent='0'; $('kcal').textContent='0'; $('cpm').textContent='0.0';
+      $('startBtn').textContent='▶ Iniciar'; $('startBtn').className='btn-start';
+      $('status').textContent='Listo para empezar'; $('status').className='status';
+      $('commitBtn').disabled=true; $('resetBtn').disabled=true; $('commitBtn').style.display='';
+      setPhase('code'); $('phaseTimer').textContent='Pulsa iniciar';
+      renderStreak();
     }
 
-    render();
+    // ---------- Historial / racha (localStorage) ----------
+    const KEY='eliptica_claude_hist';
+    const load = () => { try { return JSON.parse(localStorage.getItem(KEY))||{} } catch(e){ return {} } };
+    const todayKey = () => new Date().toISOString().slice(0,10);
+    function saveSession(ms) {
+      const h=load(), k=todayKey();
+      h[k] = h[k] || {min:0, commits:0};
+      h[k].min += Math.round(ms/60000);
+      h[k].commits += commits;
+      localStorage.setItem(KEY, JSON.stringify(h));
+      renderStreak();
+      toast(`💾 Sesión guardada: ${Math.round(ms/60000)} min · ${commits} commits`);
+    }
+    function renderStreak() {
+      const h=load();
+      $('todayMin').textContent = `${(h[todayKey()]?.min)||0} min`;
+      // racha de días consecutivos con actividad hasta hoy/ayer
+      let streak=0; const d=new Date();
+      for (;;) {
+        const k=d.toISOString().slice(0,10);
+        if (h[k] && h[k].min>0) { streak++; d.setDate(d.getDate()-1); }
+        else { if (streak===0 && k===todayKey()) { d.setDate(d.getDate()-1); continue; } break; }
+      }
+      $('streakDays').textContent = `${streak} día${streak===1?'':'s'}`;
+    }
+
+    // persistir ajustes
+    ['cfgCode','cfgSprint','cfgRemind','cfgWeight'].forEach(id=>{
+      const s=localStorage.getItem('cfg_'+id); if (s!==null) $(id).value=s;
+      $(id).addEventListener('change',()=>localStorage.setItem('cfg_'+id,$(id).value));
+    });
+
+    setPhase('code'); $('phaseTimer').textContent='Pulsa iniciar';
+    renderStreak();
   </script>
 </body>
 </html>
