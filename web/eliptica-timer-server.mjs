@@ -10,14 +10,36 @@
 // Luego abre:  http://localhost:4321
 
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, appendFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const PORT = Number(process.env.PORT) || 4321;
 const REPO = process.env.REPO || process.cwd();
-const HTML = join(dirname(fileURLToPath(import.meta.url)), 'eliptica-timer.html');
+const HERE = dirname(fileURLToPath(import.meta.url));
+const HTML = join(HERE, 'eliptica-timer.html');
+// Archivo donde se acumulan las ideas capturadas durante el ejercicio.
+// Claude Code puede leerlo directamente para trabajar sobre ellas.
+const IDEAS_FILE = process.env.IDEAS_FILE || join(REPO, 'ideas-eliptica.md');
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    let data = '';
+    req.on('data', c => { data += c; if (data.length > 1e6) req.destroy(); });
+    req.on('end', () => { try { resolve(JSON.parse(data || '{}')); } catch { resolve({}); } });
+  });
+}
+
+async function appendIdea({ text, at, ts }) {
+  const line = `- [ ] (${at || '--:--:--'}) ${String(text).replace(/\n/g, ' ')}  <!-- ${ts || ''} -->\n`;
+  try {
+    await appendFile(IDEAS_FILE, line, 'utf8');
+    return { ok: true, file: IDEAS_FILE.replace(REPO + '/', '') };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+}
 
 function countCommits(sinceISO) {
   return new Promise((resolve) => {
@@ -34,6 +56,17 @@ function countCommits(sinceISO) {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   res.setHeader('Access-Control-Allow-Origin', '*');
+
+  if (url.pathname === '/idea' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body.text || !String(body.text).trim()) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false, error: 'idea vacía' }));
+    }
+    const result = await appendIdea(body);
+    res.writeHead(result.ok ? 200 : 500, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(result));
+  }
 
   if (url.pathname === '/commits') {
     const since = url.searchParams.get('since') || new Date(Date.now() - 3600e3).toISOString();

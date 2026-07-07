@@ -90,6 +90,25 @@
     .streak .big { font-size: 22px; font-weight: 800; color: var(--warn); }
     .streak .l { font-size: 12px; color: var(--muted); }
 
+    /* Ideas */
+    .ideas-box { margin-top: 16px; background: rgba(34,211,238,0.06); border: 1px solid rgba(34,211,238,0.25);
+      border-radius: 16px; padding: 14px; }
+    .ideas-box .head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+    .ideas-box .head b { font-size:14px; }
+    .ideas-box .head .cnt { font-size:12px; color:var(--muted); }
+    .idea-input { display:flex; gap:8px; }
+    .idea-input input { flex:1; background:#0f1220; border:1px solid rgba(255,255,255,0.12); color:var(--text);
+      border-radius:10px; padding:11px; font-size:14px; }
+    .idea-input button { background:linear-gradient(90deg,var(--accent2),var(--accent)); padding:11px 14px; border-radius:10px; }
+    .idea-list { margin-top:10px; max-height:180px; overflow-y:auto; }
+    .idea-item { display:flex; gap:8px; padding:9px 2px; border-bottom:1px solid rgba(255,255,255,0.06); font-size:13.5px; }
+    .idea-item .t { color:var(--accent2); font-variant-numeric:tabular-nums; flex:0 0 auto; }
+    .idea-item .x { color:var(--sprint); cursor:pointer; flex:0 0 auto; opacity:.6; }
+    .idea-item .x:hover { opacity:1; }
+    .idea-actions { display:flex; gap:8px; margin-top:10px; }
+    .idea-actions button { flex:1; background:#334155; padding:10px; border-radius:10px; font-size:13px; }
+    .idea-empty { color:var(--muted); font-size:13px; text-align:center; padding:8px 0; }
+
     /* Toast */
     #toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(120px);
       background: #1f2547; border: 1px solid rgba(255,255,255,0.15); color: var(--text);
@@ -123,6 +142,24 @@
     <div class="streak">
       <div><div class="l">🔥 Racha</div><div class="big" id="streakDays">0 días</div></div>
       <div style="text-align:right;"><div class="l">Total hoy</div><div class="big" id="todayMin" style="color:var(--good)">0 min</div></div>
+    </div>
+
+    <div class="ideas-box">
+      <div class="head">
+        <b>💡 Ideas para Claude Code</b>
+        <span class="cnt" id="ideaSync">solo local</span>
+      </div>
+      <div class="idea-input">
+        <input id="ideaInput" type="text" placeholder="Idea que se te ocurre pedaleando…" autocomplete="off"
+               onkeydown="if(event.key==='Enter')addIdea()">
+        <button onclick="addIdea()">💡</button>
+      </div>
+      <div class="idea-list" id="ideaList"><div class="idea-empty">Aún no hay ideas. ¡Suéltalas mientras entrenas!</div></div>
+      <div class="idea-actions">
+        <button onclick="copyIdeas()">📋 Copiar todo</button>
+        <button onclick="downloadIdeas()">⬇️ Descargar .md</button>
+        <button onclick="clearIdeas()">🗑️ Limpiar</button>
+      </div>
     </div>
 
     <details>
@@ -257,6 +294,51 @@
       beep(1046,0.1,2); toast(`✅ Commit registrado (#${commits})`);
     }
 
+    // ---------- Ideas (como las vueltas, pero para Claude Code) ----------
+    const IDEAS_KEY='eliptica_claude_ideas';
+    let ideas = (()=>{ try { return JSON.parse(localStorage.getItem(IDEAS_KEY))||[] } catch(e){ return [] } })();
+    const saveIdeas = () => localStorage.setItem(IDEAS_KEY, JSON.stringify(ideas));
+
+    function renderIdeas() {
+      const el=$('ideaList');
+      if (!ideas.length) { el.innerHTML='<div class="idea-empty">Aún no hay ideas. ¡Suéltalas mientras entrenas!</div>'; return; }
+      el.innerHTML = ideas.map((it,i)=>
+        `<div class="idea-item"><span class="t">${it.at}</span><span style="flex:1">${it.text.replace(/</g,'&lt;')}</span><span class="x" onclick="delIdea(${i})">✕</span></div>`
+      ).join('');
+    }
+    async function addIdea() {
+      const inp=$('ideaInput'); const text=inp.value.trim(); if (!text) return;
+      const at = fmt(current());                       // marca de tiempo dentro de la sesión
+      ideas.push({ text, at, ts:new Date().toISOString() });
+      saveIdeas(); renderIdeas(); inp.value='';
+      beep(1174,0.1,1); vibrate(80); toast('💡 Idea guardada');
+      // Si el servidor Node está activo, la escribe en el .md del repo para Claude Code
+      try {
+        const r=await fetch('./idea',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({text, at, ts:new Date().toISOString()})});
+        if (r.ok){ const d=await r.json(); $('ideaSync').textContent='→ '+(d.file||'guardado en repo'); }
+      } catch(e){ /* modo local sin servidor */ }
+    }
+    function delIdea(i){ ideas.splice(i,1); saveIdeas(); renderIdeas(); }
+    function clearIdeas(){ if(ideas.length && confirm('¿Borrar todas las ideas guardadas?')){ ideas=[]; saveIdeas(); renderIdeas(); } }
+    function ideasMarkdown() {
+      const day=new Date().toISOString().slice(0,10);
+      return `# 💡 Ideas — Elíptica + Claude Code (${day})\n\n`+
+        ideas.map(it=>`- [ ] (${it.at}) ${it.text}`).join('\n')+'\n';
+    }
+    async function copyIdeas() {
+      if(!ideas.length) return toast('No hay ideas que copiar');
+      try { await navigator.clipboard.writeText(ideasMarkdown()); toast('📋 Ideas copiadas — pégaselas a Claude Code'); }
+      catch(e){ toast('No se pudo copiar (usa Descargar)'); }
+    }
+    function downloadIdeas() {
+      if(!ideas.length) return toast('No hay ideas que descargar');
+      const blob=new Blob([ideasMarkdown()],{type:'text/markdown'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      a.download=`ideas-eliptica-${new Date().toISOString().slice(0,10)}.md`; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    }
+
     // ---------- Controles ----------
     function toggle() {
       if (!running) {
@@ -323,6 +405,7 @@
 
     setPhase('code'); $('phaseTimer').textContent='Pulsa iniciar';
     renderStreak();
+    renderIdeas();
   </script>
 </body>
 </html>
